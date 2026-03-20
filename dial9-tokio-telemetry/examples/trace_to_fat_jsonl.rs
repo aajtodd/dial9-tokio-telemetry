@@ -136,6 +136,7 @@ fn to_fat_event(event: &TelemetryEvent, reader: &TraceReader) -> Option<FatEvent
         TelemetryEvent::QueueSample {
             timestamp_nanos,
             global_queue_depth,
+            ..
         } => Some(FatEvent::QueueSample {
             timestamp_ns: *timestamp_nanos,
             global_q: *global_queue_depth,
@@ -169,6 +170,7 @@ fn to_fat_event(event: &TelemetryEvent, reader: &TraceReader) -> Option<FatEvent
         TelemetryEvent::TaskSpawn { .. }
         | TelemetryEvent::TaskTerminate { .. }
         | TelemetryEvent::ThreadNameDef { .. }
-        | TelemetryEvent::SegmentMetadata { .. } => None,
+        | TelemetryEvent::SegmentMetadata { .. }
+        | TelemetryEvent::RuntimeDef { .. } => None,
     }
 }

@@ -359,6 +359,7 @@ impl RotatingWriter {
                 global_queue_depth,
             } => encoder.write(&QueueSampleEvent {
                 timestamp_ns: *timestamp_nanos,
+                runtime_index: 0,
                 global_queue: *global_queue_depth as u8,
             }),
             RawEvent::TaskSpawn {

@@ -115,7 +115,8 @@ impl TraceReader {
                 Some(
                     TelemetryEvent::TaskSpawn { .. }
                     | TelemetryEvent::ThreadNameDef { .. }
-                    | TelemetryEvent::SegmentMetadata { .. },
+                    | TelemetryEvent::SegmentMetadata { .. }
+                    | TelemetryEvent::RuntimeDef { .. },
                 ) => continue,
                 Some(e) => return Ok(Some(e)),
             }
@@ -179,6 +180,7 @@ fn build_global_queue_timeline(events: &[TelemetryEvent]) -> Vec<(u64, usize)> {
             TelemetryEvent::QueueSample {
                 timestamp_nanos,
                 global_queue_depth,
+                ..
             } => Some((*timestamp_nanos, *global_queue_depth)),
             _ => None,
         })
@@ -283,7 +285,8 @@ pub fn analyze_trace(events: &[TelemetryEvent]) -> TraceAnalysis {
             | TelemetryEvent::CpuSample { .. }
             | TelemetryEvent::ThreadNameDef { .. }
             | TelemetryEvent::WakeEvent { .. }
-            | TelemetryEvent::SegmentMetadata { .. } => {}
+            | TelemetryEvent::SegmentMetadata { .. }
+            | TelemetryEvent::RuntimeDef { .. } => {}
         }
     }
 
@@ -796,6 +799,7 @@ mod tests {
             },
             TelemetryEvent::QueueSample {
                 timestamp_nanos: 2_000_000,
+                runtime_index: 0,
                 global_queue_depth: 42,
             },
             TelemetryEvent::PollEnd {
@@ -849,6 +853,7 @@ mod tests {
         let events = vec![
             TelemetryEvent::QueueSample {
                 timestamp_nanos: 1_000_000,
+                runtime_index: 0,
                 global_queue_depth: 15,
             },
             TelemetryEvent::WorkerPark {
@@ -859,6 +864,7 @@ mod tests {
             },
             TelemetryEvent::QueueSample {
                 timestamp_nanos: 5_000_000,
+                runtime_index: 0,
                 global_queue_depth: 20,
             },
             TelemetryEvent::WorkerUnpark {
@@ -1210,6 +1216,7 @@ mod tests {
         let events = vec![
             TelemetryEvent::QueueSample {
                 timestamp_nanos: 1_000_000,
+                runtime_index: 0,
                 global_queue_depth: 0, // no queue pressure
             },
             TelemetryEvent::WorkerPark {

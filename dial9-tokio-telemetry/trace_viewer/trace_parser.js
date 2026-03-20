@@ -44,6 +44,7 @@
         const callframeSymbols = new Map();
         const cpuSamples = [];
         const threadNames = new Map();
+        const runtimeDefs = [];
 
         const capped = () => events.length >= maxEvents;
         // Frames processed regardless of event cap:
@@ -106,6 +107,7 @@
                 case 'QueueSampleEvent':
                     events.push({
                         eventType: 4, timestamp: ts,
+                        runtimeIndex: num(v.runtime_index),
                         globalQueue: num(v.global_queue),
                         workerId: 0, localQueue: 0, cpuTime: 0, schedWait: 0,
                         taskId: 0, spawnLocId: null, spawnLoc: null,
@@ -121,6 +123,16 @@
                 }
                 case 'TaskTerminateEvent':
                     taskTerminateTimes.set(num(v.task_id), ts);
+                    break;
+                case 'RuntimeDefEvent':
+                    // Store runtime metadata for future grouped lane support
+                    runtimeDefs.push({
+                        runtimeIndex: num(v.runtime_index),
+                        name: v.name || '',
+                        workerBase: num(v.worker_base),
+                        workerCount: num(v.worker_count),
+                        flavor: v.flavor || '',
+                    });
                     break;
                 case 'WakeEventEvent':
                     events.push({
@@ -181,6 +193,7 @@
             hasCpuTime: true, hasSchedWait: true, hasTaskTracking: true,
             spawnLocations, taskSpawnLocs, taskSpawnTimes,
             cpuSamples, callframeSymbols, threadNames, taskTerminateTimes,
+            runtimeDefs,
         };
     }
 

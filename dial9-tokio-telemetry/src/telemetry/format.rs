@@ -136,6 +136,7 @@ pub struct WorkerUnparkEvent {
 pub struct QueueSampleEvent {
     #[traceevent(timestamp)]
     pub timestamp_ns: u64,
+    pub runtime_index: u8,
     pub global_queue: u8,
 }
 
@@ -181,6 +182,17 @@ pub struct SegmentMetadataEvent {
     pub entries: Vec<(String, String)>,
 }
 
+#[derive(TraceEvent)]
+pub struct RuntimeDefEvent {
+    #[traceevent(timestamp)]
+    pub timestamp_ns: u64,
+    pub runtime_index: u8,
+    pub name: InternedString,
+    pub worker_base: u8,
+    pub worker_count: u8,
+    pub flavor: InternedString,
+}
+
 // ── dial9-trace-format: decode ──────────────────────────────────────────────
 
 /// Decode all events from a `dial9-trace-format` byte slice into `TelemetryEvent`s.
@@ -223,6 +235,7 @@ pub enum TelemetryEventRef<'a> {
     CpuSample(CpuSampleEventRef<'a>),
     WakeEvent(WakeEventEventRef<'a>),
     SegmentMetadata(SegmentMetadataEventRef<'a>),
+    RuntimeDef(RuntimeDefEventRef<'a>),
 }
 
 impl<'a> TelemetryEventRef<'a> {
@@ -239,6 +252,7 @@ impl<'a> TelemetryEventRef<'a> {
             Self::CpuSample(e) => Some(e.timestamp_ns),
             Self::WakeEvent(e) => Some(e.timestamp_ns),
             Self::SegmentMetadata(e) => Some(e.timestamp_ns),
+            Self::RuntimeDef(e) => Some(e.timestamp_ns),
         }
     }
 }
@@ -280,6 +294,9 @@ pub fn decode_ref<'a>(
         "SegmentMetadataEvent" => {
             TelemetryEventRef::SegmentMetadata(SegmentMetadataEvent::decode(timestamp_ns, fields)?)
         }
+        "RuntimeDefEvent" => {
+            TelemetryEventRef::RuntimeDef(RuntimeDefEvent::decode(timestamp_ns, fields)?)
+        }
         _ => return None,
     })
 }
@@ -314,6 +331,7 @@ impl From<TelemetryEventRef<'_>> for TelemetryEvent {
             },
             TelemetryEventRef::QueueSample(e) => TelemetryEvent::QueueSample {
                 timestamp_nanos: e.timestamp_ns,
+                runtime_index: e.runtime_index,
                 global_queue_depth: e.global_queue as usize,
             },
             TelemetryEventRef::TaskSpawn(e) => TelemetryEvent::TaskSpawn {
@@ -345,6 +363,14 @@ impl From<TelemetryEventRef<'_>> for TelemetryEvent {
                     .iter()
                     .map(|(k, v)| (k.to_owned(), v.to_owned()))
                     .collect(),
+            },
+            TelemetryEventRef::RuntimeDef(e) => TelemetryEvent::RuntimeDef {
+                timestamp_nanos: e.timestamp_ns,
+                runtime_index: e.runtime_index,
+                name: e.name,
+                worker_base: e.worker_base,
+                worker_count: e.worker_count,
+                flavor: e.flavor,
             },
         }
     }

@@ -100,6 +100,7 @@ pub enum TelemetryEvent {
     QueueSample {
         #[serde(rename = "timestamp_ns")]
         timestamp_nanos: u64,
+        runtime_index: u8,
         #[serde(rename = "global_q")]
         global_queue_depth: usize,
     },
@@ -144,6 +145,16 @@ pub enum TelemetryEvent {
         timestamp_nanos: u64,
         entries: Vec<(String, String)>,
     },
+    /// Defines a runtime participating in a multi-runtime trace.
+    RuntimeDef {
+        #[serde(rename = "timestamp_ns")]
+        timestamp_nanos: u64,
+        runtime_index: u8,
+        name: InternedString,
+        worker_base: u8,
+        worker_count: u8,
+        flavor: InternedString,
+    },
 }
 
 impl TelemetryEvent {
@@ -181,6 +192,9 @@ impl TelemetryEvent {
             TelemetryEvent::SegmentMetadata {
                 timestamp_nanos, ..
             } => Some(*timestamp_nanos),
+            TelemetryEvent::RuntimeDef {
+                timestamp_nanos, ..
+            } => Some(*timestamp_nanos),
         }
     }
 
@@ -197,14 +211,20 @@ impl TelemetryEvent {
             | TelemetryEvent::TaskTerminate { .. }
             | TelemetryEvent::ThreadNameDef { .. }
             | TelemetryEvent::WakeEvent { .. }
-            | TelemetryEvent::SegmentMetadata { .. } => None,
+            | TelemetryEvent::SegmentMetadata { .. }
+            | TelemetryEvent::RuntimeDef { .. } => None,
         }
     }
 
     /// Returns true if this is a runtime event (has a timestamp), as opposed to
     /// a metadata record.
     pub fn is_runtime_event(&self) -> bool {
-        self.timestamp_nanos().is_some()
+        !matches!(
+            self,
+            TelemetryEvent::ThreadNameDef { .. }
+                | TelemetryEvent::SegmentMetadata { .. }
+                | TelemetryEvent::RuntimeDef { .. }
+        ) && self.timestamp_nanos().is_some()
     }
 }
 
@@ -438,6 +458,7 @@ mod tests {
 
         let queue_sample = TelemetryEvent::QueueSample {
             timestamp_nanos: 3000,
+            runtime_index: 0,
             global_queue_depth: 5,
         };
         assert_eq!(queue_sample.timestamp_nanos(), Some(3000));
@@ -463,6 +484,7 @@ mod tests {
 
         let queue_sample = TelemetryEvent::QueueSample {
             timestamp_nanos: 1000,
+            runtime_index: 0,
             global_queue_depth: 5,
         };
         assert_eq!(queue_sample.worker_id(), None);
