@@ -519,11 +519,17 @@ impl TracedRuntimeGroup {
 
         if current_thread_hint {
             // current_thread optimization: worker ID is a captured constant.
-            // No TLS lookup, no ArcSwap load, no metrics scan.
+            // No TLS lookup, no worker ID scan. Still reads metrics for queue depth.
             let wid = WorkerId::from(base);
 
             let s = shared.clone();
+            let m = rt_metrics.clone();
             builder.on_thread_park(move || {
+                let local_q = m
+                    .load()
+                    .as_ref()
+                    .as_ref()
+                    .map_or(0, |m| m.worker_local_queue_depth(0));
                 let cpu_time_nanos = crate::telemetry::events::thread_cpu_time_nanos();
                 if let Ok(ss) = crate::telemetry::events::SchedStat::read_current() {
                     super::shared_state::PARKED_SCHED_WAIT.with(|c| c.set(ss.wait_time_ns));
@@ -531,13 +537,19 @@ impl TracedRuntimeGroup {
                 s.record_event(RawEvent::WorkerPark {
                     timestamp_nanos: crate::telemetry::events::clock_monotonic_ns(),
                     worker_id: wid,
-                    worker_local_queue_depth: 0,
+                    worker_local_queue_depth: local_q,
                     cpu_time_nanos,
                 });
             });
 
             let s = shared.clone();
+            let m = rt_metrics.clone();
             builder.on_thread_unpark(move || {
+                let local_q = m
+                    .load()
+                    .as_ref()
+                    .as_ref()
+                    .map_or(0, |m| m.worker_local_queue_depth(0));
                 let cpu_time_nanos = crate::telemetry::events::thread_cpu_time_nanos();
                 let sched_wait_delta_nanos =
                     if let Ok(ss) = crate::telemetry::events::SchedStat::read_current() {
@@ -549,20 +561,26 @@ impl TracedRuntimeGroup {
                 s.record_event(RawEvent::WorkerUnpark {
                     timestamp_nanos: crate::telemetry::events::clock_monotonic_ns(),
                     worker_id: wid,
-                    worker_local_queue_depth: 0,
+                    worker_local_queue_depth: local_q,
                     cpu_time_nanos,
                     sched_wait_delta_nanos,
                 });
             });
 
             let s = shared.clone();
+            let m = rt_metrics.clone();
             builder.on_before_task_poll(move |meta| {
                 let task_id = TaskId::from(meta.id());
                 let location = meta.spawned_at();
+                let local_q = m
+                    .load()
+                    .as_ref()
+                    .as_ref()
+                    .map_or(0, |m| m.worker_local_queue_depth(0));
                 s.record_event(RawEvent::PollStart {
                     timestamp_nanos: crate::telemetry::events::clock_monotonic_ns(),
                     worker_id: wid,
-                    worker_local_queue_depth: 0,
+                    worker_local_queue_depth: local_q,
                     task_id,
                     location,
                 });

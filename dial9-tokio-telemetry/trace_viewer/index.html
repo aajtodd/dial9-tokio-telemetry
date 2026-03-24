@@ -599,6 +599,10 @@
             let schedDelays = []; // [{wakeTime, pollTime, delay, taskId, wakerTaskId, worker}]
             // Lane canvases per worker (populated by buildLanes)
             let laneCanvases = {};
+            // Worker → runtime info mapping (populated by buildLanes)
+            let workerRuntimeMap = {};
+            // Task → worker mapping (populated during trace processing)
+            let taskToWorkerMap = {};
 
             const LABEL_W = 100;
             const LANE_H = 60;
@@ -957,11 +961,16 @@
                 // Compute scheduling delays: for each poll, find the most recent wake before it
                 // Build task → sorted polls index for mid-poll wake adjustment
                 const pollsByTask = {};
+                const taskToWorker = {}; // taskId → workerId (from most recent poll)
                 for (const w of workerIds) {
                     for (const s of workerSpans[w].polls) {
-                        if (s.taskId) (pollsByTask[s.taskId] ??= []).push(s);
+                        if (s.taskId) {
+                            (pollsByTask[s.taskId] ??= []).push(s);
+                            taskToWorker[s.taskId] = parseInt(w);
+                        }
                     }
                 }
+                taskToWorkerMap = taskToWorker;
                 for (const arr of Object.values(pollsByTask)) {
                     arr.sort((a, b) => a.start - b.start);
                 }
@@ -1188,6 +1197,7 @@
                         }
                     }
                 }
+                workerRuntimeMap = workerRuntime;
 
                 let lastRuntimeIndex = -1;
                 for (const w of workerIds) {
@@ -1711,6 +1721,14 @@
                             const wakerLoc = trace.taskSpawnLocs.get(wid);
                             const wakerLocStr = wakerLoc ? trace.spawnLocations.get(wakerLoc) : null;
                             label = wakerLocStr ? wakerLocStr.replace(/.*\//, '') : `task 0x${wid.toString(16)}`;
+                        }
+                        // Annotate with source runtime if available
+                        const wakerWorker = taskToWorkerMap[wid];
+                        const wakerRt = wakerWorker !== undefined ? workerRuntimeMap[wakerWorker] : null;
+                        if (wakerRt && wakerRt.name) {
+                            label += ` (${wakerRt.name})`;
+                        } else if (wakerWorker !== undefined) {
+                            label += ` (w${wakerWorker})`;
                         }
                         if (w > 40) {
                             const isHovered = hoveredWakerTaskId === wake.wakerTaskId;
