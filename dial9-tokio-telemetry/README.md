@@ -100,6 +100,42 @@ runtime.block_on(async {
 
 For frameworks like Axum where you don't control the spawn call, you need to wrap the accept loop. See [`examples/metrics-service/src/axum_traced.rs`](/examples/metrics-service/src/axum_traced.rs) for a working example that wraps both the accept loop and per-connection futures.
 
+## Multi-runtime support
+
+For thread-per-core architectures with multiple Tokio runtimes, `TracedRuntimeGroup` provides a unified trace across all runtimes:
+
+```rust,no_run
+use dial9_tokio_telemetry::telemetry::{RotatingWriter, TracedRuntimeGroup};
+
+fn main() -> std::io::Result<()> {
+    let writer = RotatingWriter::single_file("/tmp/traces/multi.bin")?;
+
+    let mut group = TracedRuntimeGroup::builder()
+        .with_task_tracking(true)
+        .build(writer)?;
+
+    let workers = group.register_group(
+        "io-workers",
+        (0..4).map(|_| tokio::runtime::Builder::new_current_thread()),
+    )?;
+
+    let guard = group.start();
+
+    std::thread::scope(|s| {
+        for rt in &workers {
+            s.spawn(|| rt.block_on(async { /* I/O work */ }));
+        }
+    });
+
+    // guard drop: flush, seal
+    Ok(())
+}
+```
+
+Each runtime is assigned a contiguous range of worker IDs. The trace contains `RuntimeDef` metadata events that map worker IDs back to named runtimes, enabling grouped visualization in the trace viewer.
+
+See `examples/multi_runtime.rs` for a complete thread-per-core example.
+
 ## Platform support
 
 Core telemetry (poll timing, park/unpark, queue depth, wake events) works on all platforms.

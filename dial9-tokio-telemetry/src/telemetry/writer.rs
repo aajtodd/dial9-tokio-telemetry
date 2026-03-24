@@ -3,8 +3,9 @@ use dial9_trace_format::{InternedString, StackFrames};
 
 use crate::telemetry::events::RawEvent;
 use crate::telemetry::format::{
-    CpuSampleEvent, PollEndEvent, PollStartEvent, QueueSampleEvent, SegmentMetadataEvent,
-    TaskSpawnEvent, TaskTerminateEvent, WakeEventEvent, WorkerParkEvent, WorkerUnparkEvent,
+    CpuSampleEvent, PollEndEvent, PollStartEvent, QueueSampleEvent, RuntimeDefEvent,
+    SegmentMetadataEvent, TaskSpawnEvent, TaskTerminateEvent, WakeEventEvent, WorkerParkEvent,
+    WorkerUnparkEvent,
 };
 use std::collections::{HashMap, VecDeque};
 use std::fs::{self, File};
@@ -356,10 +357,11 @@ impl RotatingWriter {
             }),
             RawEvent::QueueSample {
                 timestamp_nanos,
+                runtime_index,
                 global_queue_depth,
             } => encoder.write(&QueueSampleEvent {
                 timestamp_ns: *timestamp_nanos,
-                runtime_index: 0,
+                runtime_index: *runtime_index,
                 global_queue: *global_queue_depth as u8,
             }),
             RawEvent::TaskSpawn {
@@ -406,6 +408,25 @@ impl RotatingWriter {
                     source: data.source,
                     thread_name,
                     callchain: StackFrames(data.callchain.clone()),
+                })
+            }
+            RawEvent::RuntimeDef {
+                timestamp_nanos,
+                runtime_index,
+                name,
+                worker_base,
+                worker_count,
+                flavor,
+            } => {
+                let name = encoder.intern_string(name)?;
+                let flavor = encoder.intern_string(flavor)?;
+                encoder.write(&RuntimeDefEvent {
+                    timestamp_ns: *timestamp_nanos,
+                    runtime_index: *runtime_index,
+                    name,
+                    worker_base: *worker_base,
+                    worker_count: *worker_count,
+                    flavor,
                 })
             }
         }?;

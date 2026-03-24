@@ -259,6 +259,7 @@ pub enum RawEvent {
     },
     QueueSample {
         timestamp_nanos: u64,
+        runtime_index: u8,
         global_queue_depth: usize,
     },
     TaskSpawn {
@@ -275,6 +276,15 @@ pub enum RawEvent {
         waker_task_id: crate::telemetry::task_metadata::TaskId,
         woken_task_id: crate::telemetry::task_metadata::TaskId,
         target_worker: u8,
+    },
+    /// Defines a runtime participating in a multi-runtime trace.
+    RuntimeDef {
+        timestamp_nanos: u64,
+        runtime_index: u8,
+        name: String,
+        worker_base: u8,
+        worker_count: u8,
+        flavor: String,
     },
     /// A CPU stack trace sample from perf_event, attributed to a worker thread.
     CpuSample(Box<CpuSampleData>),

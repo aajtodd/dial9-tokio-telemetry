@@ -1,4 +1,5 @@
 mod event_writer;
+pub mod runtime_group;
 mod shared_state;
 
 pub(crate) use shared_state::SharedState;
@@ -18,8 +19,8 @@ use std::time::{Duration, Instant};
 use tokio::runtime::Handle;
 
 pub struct TelemetryRecorder {
-    shared: Arc<SharedState>,
-    event_writer: EventWriter,
+    pub(super) shared: Arc<SharedState>,
+    pub(super) event_writer: EventWriter,
 }
 
 /// Stats returned by [`TelemetryRecorder::flush`] for metrics publishing.
@@ -261,9 +262,9 @@ impl TelemetryHandle {
 }
 
 /// Holds the worker thread and its stop signal.
-struct WorkerHandle {
-    shutdown: Option<tokio::sync::oneshot::Sender<Duration>>,
-    thread: Option<std::thread::JoinHandle<()>>,
+pub(super) struct WorkerHandle {
+    pub(super) shutdown: Option<tokio::sync::oneshot::Sender<Duration>>,
+    pub(super) thread: Option<std::thread::JoinHandle<()>>,
 }
 
 /// RAII guard returned by [`TracedRuntimeBuilder::build`].
@@ -275,6 +276,24 @@ pub struct TelemetryGuard {
 }
 
 impl TelemetryGuard {
+    /// Create a new guard with an optional background worker.
+    /// Used by `TracedRuntimeGroup` to construct a guard without going
+    /// through the single-runtime `build_inner` path.
+    pub(super) fn new_with_worker(
+        shared: Arc<SharedState>,
+        recorder: Arc<Mutex<TelemetryRecorder>>,
+        stop: Arc<AtomicBool>,
+        flush_thread: Option<std::thread::JoinHandle<()>>,
+        worker: Option<WorkerHandle>,
+    ) -> Self {
+        Self {
+            handle: TelemetryHandle { shared, recorder },
+            stop,
+            flush_thread,
+            worker,
+        }
+    }
+
     pub fn handle(&self) -> TelemetryHandle {
         self.handle.clone()
     }
@@ -641,7 +660,7 @@ impl TracedRuntimeBuilder<HasTracePath> {
                             last_sample = now;
                             let metrics_guard = shared.metrics.load();
                             if let Some(ref metrics) = **metrics_guard {
-                                shared.record_queue_sample(metrics.global_queue_depth());
+                                shared.record_queue_sample(0, metrics.global_queue_depth());
                             }
                         }
 

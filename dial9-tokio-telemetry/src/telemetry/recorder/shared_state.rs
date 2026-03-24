@@ -72,6 +72,52 @@ pub(super) fn resolve_worker_id(
     })
 }
 
+/// Resolve the current thread's tokio worker index with a base offset for
+/// multi-runtime groups. Returns the flat worker ID (`base + local_index`).
+/// The flat ID is cached in TLS, so subsequent calls are O(1).
+pub(super) fn resolve_worker_id_with_base(
+    metrics: &ArcSwap<Option<RuntimeMetrics>>,
+    #[cfg_attr(not(feature = "cpu-profiling"), allow(unused_variables))] shared: Option<
+        &SharedState,
+    >,
+    base: usize,
+) -> Option<usize> {
+    WORKER_ID.with(|cell| {
+        if let Some(id) = cell.get() {
+            return Some(id);
+        }
+        if NOT_A_WORKER.with(|c| c.get()) {
+            return None;
+        }
+        let tid = std::thread::current().id();
+        if let Some(ref m) = **metrics.load() {
+            for i in 0..m.num_workers() {
+                if m.worker_thread_id(i) == Some(tid) {
+                    let flat_id = base + i;
+                    cell.set(Some(flat_id));
+                    #[cfg(feature = "cpu-profiling")]
+                    if let Some(shared) = shared {
+                        TID_EMITTED.with(|emitted| {
+                            if !emitted.get() {
+                                emitted.set(true);
+                                let os_tid = crate::telemetry::events::current_tid();
+                                shared
+                                    .thread_roles
+                                    .lock()
+                                    .unwrap()
+                                    .insert(os_tid, ThreadRole::Worker(flat_id));
+                            }
+                        });
+                    }
+                    return Some(flat_id);
+                }
+            }
+            NOT_A_WORKER.with(|c| c.set(true));
+        }
+        None
+    })
+}
+
 /// Get the current worker ID (UNKNOWN if not a worker). Used by Traced waker.
 pub(crate) fn current_worker_id(metrics: &ArcSwap<Option<RuntimeMetrics>>) -> u8 {
     match resolve_worker_id(metrics, None) {
@@ -126,9 +172,10 @@ impl SharedState {
         }
     }
 
-    pub(crate) fn record_queue_sample(&self, global_queue_depth: usize) {
+    pub(crate) fn record_queue_sample(&self, runtime_index: u8, global_queue_depth: usize) {
         self.record_event(RawEvent::QueueSample {
             timestamp_nanos: self.timestamp_nanos(),
+            runtime_index,
             global_queue_depth,
         });
     }
